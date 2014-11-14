@@ -1,4 +1,4 @@
-Devel-Cycle version 1.00
+Perl Module Devel::Cycle
 ========================
 
 This module can be used to find memory cycles in objects and other
@@ -53,11 +53,15 @@ To install this module type the following:
    make test
    make install
 
+DEVELOPING
+
+The master repository for Devel::Cycle is kept on GitHub at
+https://github.com/lstein/Devel-Cycle. Please contribute by sending
+pull requests.
+
 COPYRIGHT AND LICENCE
 
-Put the correct copyright and licence information here.
-
-Copyright (C) 2003 by Lincoln Stein
+Copyright (C) 2003-2014 by Lincoln Stein <lincoln.stein@gmail.com>
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.2 or,

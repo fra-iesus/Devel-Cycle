@@ -17,7 +17,7 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(find_cycle find_weakened_cycle);
 our @EXPORT_OK = qw($FORMATTING);
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 our $FORMATTING = 'roasted';
 our $QUIET   = 0;
 
@@ -437,13 +437,19 @@ L<Test::Memory::Cycle>
 L<Devel::Leak>
 L<Scalar::Util>
 
+=head1 DEVELOPING
+
+https://github.com/lstein/Devel-Cycle. Please contribute to the code
+base by sending pull requests. Use GitHub for bug reports and feature
+requests.
+
 =head1 AUTHOR
 
-Lincoln Stein, E<lt>lstein@cshl.eduE<gt>
+Lincoln Stein, E<lt>lincoln.stein@gmail.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003 by Lincoln Stein
+Copyright (C) 2003-2014 by Lincoln Stein
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.2 or,
