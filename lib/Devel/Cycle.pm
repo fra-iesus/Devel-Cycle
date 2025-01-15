@@ -1,5 +1,5 @@
 package Devel::Cycle;
-# $Id: Cycle.pm,v 1.15 2009/08/24 12:51:02 lstein Exp $
+# $Id: Cycle.pm,v 1.16 2025/01/15 fra.iesus - https://github.com/fra-iesus/Devel-Cycle/ $
 
 use 5.006001;
 use strict;
@@ -7,227 +7,275 @@ use Carp 'croak','carp';
 use warnings;
 
 use Scalar::Util qw(isweak blessed refaddr reftype);
+use Test::More;
 
 my $SHORT_NAME = 'A';
 my %SHORT_NAMES;
 
 
 require Exporter;
+require overload;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(find_cycle find_weakened_cycle);
 our @EXPORT_OK = qw($FORMATTING);
-our $VERSION = '1.12';
+our $VERSION = '1.16';
 our $FORMATTING = 'roasted';
 our $QUIET   = 0;
 
 my %import_args = (-quiet =>1,
-		   -raw   =>1,
-		   -cooked =>1,
-		   -roasted=>1);
+	-raw   =>1,
+	-cooked =>1,
+	-roasted=>1);
 
 BEGIN {
-  require constant;
-  constant->import( HAVE_PADWALKER =>
-		    eval {
-		      require PadWalker;
-		      $PadWalker::VERSION >= 1.0;
-		    });
+	require constant;
+	constant->import( HAVE_PADWALKER =>
+		eval {
+			require PadWalker;
+			$PadWalker::VERSION >= 1.0;
+		});
 }
 
 sub import {
-  my $self = shift;
-  my @args = @_;
-  my %args = map {$_=>1} @args;
-  $QUIET++    if exists $args{-quiet};
-  $FORMATTING = 'roasted' if exists $args{-roasted};
-  $FORMATTING = 'raw'     if exists $args{-raw};
-  $FORMATTING = 'cooked'  if exists $args{-cooked};
-  $self->export_to_level(1,$self,grep {!exists $import_args{$_}} @_);
+	my $self = shift;
+	my @args = @_;
+	my %args = map {$_=>1} @args;
+	$QUIET++    if exists $args{-quiet};
+	$FORMATTING = 'roasted' if exists $args{-roasted};
+	$FORMATTING = 'raw'     if exists $args{-raw};
+	$FORMATTING = 'cooked'  if exists $args{-cooked};
+	$self->export_to_level(1,$self,grep {!exists $import_args{$_}} @_);
 }
 
 sub find_weakened_cycle {
-  my $ref      = shift;
-  my $callback = shift;
-  unless ($callback) {
-    my $counter = 0;
-    $callback = sub {
-      _do_report(++$counter,shift)
-    }
-  }
-  _find_cycle($ref,{},$callback,1,{},());
+	my $ref      = shift;
+	my $callback = shift;
+	unless ($callback) {
+		my $counter = 0;
+		$callback = sub {
+			_do_report(++$counter,shift)
+		}
+	}
+	_find_cycle($ref,{},$callback,1,{},());
 }
 
 sub find_cycle {
-  my $ref      = shift;
-  my $callback = shift;
-  unless ($callback) {
-    my $counter = 0;
-    $callback = sub {
-      _do_report(++$counter,shift)
-    }
-  }
-  _find_cycle($ref,{},$callback,0,{},());
+	my $ref      = shift;
+	my $callback = shift;
+	unless ($callback) {
+		my $counter = 0;
+		$callback = sub {
+			_do_report(++$counter,shift)
+		}
+	}
+	_find_cycle($ref,{},$callback,0,{},());
 }
 
 sub _find_cycle {
-  my $current   = shift;
-  my $seenit    = shift;
-  my $callback  = shift;
-  my $inc_weak_refs = shift;
-  my $complain = shift;
-  my @report  = @_;
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain = shift;
+	my @report  = @_;
 
-  return unless ref $current;
+	return unless ref $current;
+	# note: it seems like you could just do:
+	#
+	#    return if isweak($current);
+	#
+	# but strangely the weak flag doesn't seem to survive the copying,
+	# so the test has to happen directly on the reference in the data
+	# structure being scanned.
 
-  # note: it seems like you could just do:
-  #
-  #    return if isweak($current);
-  #
-  # but strangely the weak flag doesn't seem to survive the copying,
-  # so the test has to happen directly on the reference in the data
-  # structure being scanned.
+	if ($seenit->{refaddr $current}) {
+		$callback->(\@report);
+		return;
+	}
+	$seenit->{refaddr $current}++;
 
-  if ($seenit->{refaddr $current}) {
-    $callback->(\@report);
-    return;
-  }
-  $seenit->{refaddr $current}++;
-
-  _find_cycle_dispatch($current,{%$seenit},$callback,$inc_weak_refs,$complain,@report);
+	_find_cycle_dispatch($current,{%$seenit},$callback,$inc_weak_refs,$complain,@report);
 }
 
 sub _find_cycle_dispatch {
-  my $type = _get_type($_[0]);
+	my $type = _get_type($_[0]);
 
-  if (!defined $type) {
-    my $ref = reftype $_[0];
-    our %already_warned;
-    if (!$already_warned{$ref}++) {
-	warn "Unhandled type: $ref";
-    }
-    return;
-  }
-  my $sub = do { no strict 'refs'; \&{"_find_cycle_$type"} };
-  $sub->(@_);
+	if (!defined $type) {
+		my $ref = reftype $_[0];
+		our %already_warned;
+		if (!$already_warned{$ref}++) {
+			warn "Unhandled type: $ref";
+		}
+		return;
+	}
+	my $sub = do { no strict 'refs'; \&{"_find_cycle_$type"} };
+	$sub->(@_);
 }
 
 sub _find_cycle_SCALAR {
-  my $current   = shift;
-  my $seenit    = shift;
-  my $callback  = shift;
-  my $inc_weak_refs = shift;
-  my $complain  = shift;
-  my @report  = @_;
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain  = shift;
+	my @report  = @_;
 
-  return if !$inc_weak_refs && isweak($$current);
-  _find_cycle($$current,{%$seenit},$callback,$inc_weak_refs,$complain,
-              (@report,['SCALAR',undef,$current => $$current,$inc_weak_refs?isweak($$current):()]));
+	return if !$inc_weak_refs && isweak($$current);
+	_find_cycle($$current,{%$seenit},$callback,$inc_weak_refs,$complain,
+		(@report,['SCALAR',undef,$current => $$current,$inc_weak_refs?isweak($$current):()]));
 }
 
 sub _find_cycle_ARRAY {
-  my $current   = shift;
-  my $seenit    = shift;
-  my $callback  = shift;
-  my $inc_weak_refs = shift;
-  my $complain  = shift;
-  my @report  = @_;
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain  = shift;
+	my @report  = @_;
 
-  for (my $i=0; $i<@$current; $i++) {
-    next if !$inc_weak_refs && isweak($current->[$i]);
-    _find_cycle($current->[$i],{%$seenit},$callback,$inc_weak_refs,$complain,
-                (@report,['ARRAY',$i,$current => $current->[$i],$inc_weak_refs?isweak($current->[$i]):()]));
-    }
+	for (my $i=0; $i<@$current; $i++) {
+		next if !$inc_weak_refs && isweak($current->[$i]);
+		_find_cycle($current->[$i],{%$seenit},$callback,$inc_weak_refs,$complain,
+			(@report,['ARRAY',$i,$current => $current->[$i],$inc_weak_refs?isweak($current->[$i]):()]));
+	}
 }
 
 sub _find_cycle_HASH {
-  my $current   = shift;
-  my $seenit    = shift;
-  my $callback  = shift;
-  my $inc_weak_refs = shift;
-  my $complain  = shift;
-  my @report  = @_;
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain  = shift;
+	my @report  = @_;
 
-  for my $key (sort keys %$current) {
-    next if !$inc_weak_refs && isweak($current->{$key});
-    _find_cycle($current->{$key},{%$seenit},$callback,$inc_weak_refs,$complain,
-                (@report,['HASH',$key,$current => $current->{$key},$inc_weak_refs?isweak($current->{$key}):()]));
-    }
+	my $overloaded = defined overload::Method($current, '%{}');
+	my $class;
+	if($overloaded) {
+		$class = ref $current;
+		bless $current;
+	}
+	my %hash = map +($_ => \$current->{$_}), keys %$current;
+	$overloaded and bless $current, $class;
+
+	for my $key (sort keys %hash) {
+		next if !$inc_weak_refs && isweak(${ $hash{$key} });
+		_find_cycle(${ $hash{$key} },{%$seenit},$callback,$inc_weak_refs,$complain,
+			(@report,['HASH',$key,$current => ${ $hash{$key} },$inc_weak_refs?isweak(${ $hash{$key} }):()]));
+
+	}
 }
 
 sub _find_cycle_CODE {
-  my $current   = shift;
-  my $seenit    = shift;
-  my $callback  = shift;
-  my $inc_weak_refs = shift;
-  my $complain  = shift;
-  my @report  = @_;
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain  = shift;
+	my @report  = @_;
 
-  unless (HAVE_PADWALKER) {
-    if (!$complain->{$current} && !$QUIET) {
-      carp "A code closure was detected in but we cannot check it unless the PadWalker module is installed";
-    }
+	unless (HAVE_PADWALKER) {
+		if (!$complain->{$current} && !$QUIET) {
+			carp "A code closure was detected in but we cannot check it unless the PadWalker module is installed";
+		}
 
-    return;
-  }
+		return;
+	}
 
-  my $closed_vars = PadWalker::closed_over( $current );
-  foreach my $varname ( sort keys %$closed_vars ) {
-    my $value = $closed_vars->{$varname};
-    _find_cycle_dispatch($value,{%$seenit},$callback,$inc_weak_refs,$complain,
-                         (@report,['CODE',$varname,$current => $value]));
-  }
+	my $closed_vars = PadWalker::closed_over( $current );
+	foreach my $varname ( sort keys %$closed_vars ) {
+		my $is_weak = reftype($closed_vars->{$varname}) eq 'REF'
+		&& isweak(${ $closed_vars->{$varname} });
+		next if !$inc_weak_refs && $is_weak;
+		my $value = $closed_vars->{$varname};
+		_find_cycle_dispatch($value,{%$seenit},$callback,$inc_weak_refs,$complain,
+			(@report,['CODE',$varname,$current => $value,
+				$inc_weak_refs ? $is_weak : ()]));
+	}
+}
+
+sub _find_cycle_GLOB {
+	my $current = shift;
+	my $seenit = shift;
+	my $callback = shift;
+	my $inc_weak_refs = shift;
+	my $complain = shift;
+	my @report = @_;
+
+	return if !$inc_weak_refs && isweak($$current);
+
+	if (exists $seenit->{"$$current"}) {
+		$callback->(@report, ['GLOB', undef, $current => $$current, $inc_weak_refs ? isweak($$current) : ()]);
+		return;
+	}
+	$seenit->{"$$current"} = 1;
+}
+
+sub _find_cycle_IO {
+	my $current   = shift;
+	my $seenit    = shift;
+	my $callback  = shift;
+	my $inc_weak_refs = shift;
+	my $complain  = shift;
+	my @report    = @_;
+
+	return if !$inc_weak_refs && isweak($$current);
+
+	_find_cycle($$current, {%$seenit}, $callback, $inc_weak_refs, $complain,
+		(@report, ['IO', undef, $current => $$current, $inc_weak_refs ? isweak($$current) : ()]));
 }
 
 sub _do_report {
-  my $counter = shift;
-  my $path    = shift;
-  print "Cycle ($counter):\n";
-  foreach (@$path) {
-    my ($type,$index,$ref,$value,$is_weak) = @$_;
-    printf("\t%30s => %-30s\n",($is_weak ? 'w-> ' : '')._format_reference($type,$index,$ref,0),_format_reference(undef,undef,$value,1));
-  }
-  print "\n";
+	my $counter = shift;
+	my $path    = shift;
+	print "Cycle ($counter):\n";
+	foreach (@$path) {
+		my ($type,$index,$ref,$value,$is_weak) = @$_;
+		printf("\t%30s => %-30s\n",($is_weak ? 'w-> ' : '')._format_reference($type,$index,$ref,0),_format_reference(undef,undef,$value,1));
+	}
+	print "\n";
 }
 
 sub _format_reference {
-  my ($type,$index,$ref,$deref) = @_;
-  $type ||= _get_type($ref);
-  return $ref unless $type;
-  my $suffix  = defined $index ? _format_index($type,$index) : '';
-  if ($FORMATTING eq 'raw') {
-    return $ref.$suffix;
-  }
+	my ($type,$index,$ref,$deref) = @_;
+	$type ||= _get_type($ref);
+	return $ref unless $type;
+	my $suffix  = defined $index ? _format_index($type,$index) : '';
 
-  else {
-    my $package  = blessed($ref);
-    my $prefix   = $package ? ($FORMATTING eq 'roasted' ? "${package}::" : "${package}="  ) : '';
-    my $sygil    = $deref ? '\\' : '';
-    my $shortname = ($SHORT_NAMES{$ref} ||= $SHORT_NAME++);
-    return $sygil . ($sygil ? '$' : '$$'). $prefix . $shortname . $suffix if $type eq 'SCALAR';
-    return $sygil . ($sygil ? '@' : '$') . $prefix . $shortname . $suffix  if $type eq 'ARRAY';
-    return $sygil . ($sygil ? '%' : '$') . $prefix . $shortname . $suffix  if $type eq 'HASH';
-    return $sygil . ($sygil ? '&' : '$') . $prefix . $shortname . $suffix if $type eq 'CODE';
-  }
+	return $ref.$suffix if ($FORMATTING eq 'raw');
+
+	my $package  = blessed($ref);
+	my $prefix   = $package ? ($FORMATTING eq 'roasted' ? "${package}::" : "${package}="  ) : '';
+	my $sygil    = $deref ? '\\' : '';
+	my $shortname = ($SHORT_NAMES{refaddr $ref} ||= $SHORT_NAME++);
+	return $sygil . ($sygil ? '$' : '$$'). $prefix . $shortname . $suffix if $type eq 'SCALAR';
+	return $sygil . ($sygil ? '@' : '$') . $prefix . $shortname . $suffix  if $type eq 'ARRAY';
+	return $sygil . ($sygil ? '%' : '$') . $prefix . $shortname . $suffix  if $type eq 'HASH';
+	return $sygil . ($sygil ? '&' : '$') . $prefix . $shortname . $suffix if $type eq 'CODE';
+	return $sygil . ($sygil ? '*' : '$') . $prefix . $shortname . $suffix if $type eq 'GLOB';
+	return $sygil . ($sygil ? '>' : '$') . $prefix . $shortname . $suffix if $type eq 'IO';
 }
 
-# why not Scalar::Util::reftype?
 sub _get_type {
-  my $thingy = shift;
-  return unless ref $thingy;
-  return 'SCALAR' if UNIVERSAL::isa($thingy,'SCALAR') || UNIVERSAL::isa($thingy,'REF');
-  return 'ARRAY'  if UNIVERSAL::isa($thingy,'ARRAY');
-  return 'HASH'   if UNIVERSAL::isa($thingy,'HASH');
-  return 'CODE'   if UNIVERSAL::isa($thingy,'CODE');
-  undef;
+	my $thingy = shift;
+	return unless ref $thingy;
+
+	my $type = reftype($thingy);
+	return 'SCALAR' if $type eq 'SCALAR' || $type eq 'REF' || $type eq 'REGEXP';
+	return 'ARRAY'  if $type eq 'ARRAY';
+	return 'HASH'   if $type eq 'HASH';
+	return 'CODE'   if $type eq 'CODE';
+	return 'GLOB'   if $type eq 'GLOB';
+	return 'IO'     if $type eq 'IO';
+	return undef;
 }
 
 sub _format_index {
-  my ($type,$index) = @_;
-  return "->[$index]" if $type eq 'ARRAY';
-  return "->{'$index'}" if $type eq 'HASH';
-  return " variable $index" if $type eq 'CODE';
-  return;
+	my ($type,$index) = @_;
+	return "->[$index]" if $type eq 'ARRAY';
+	return "->{'$index'}" if $type eq 'HASH';
+	return " variable $index" if $type eq 'CODE';
+	return;
 }
 
 1;
@@ -242,10 +290,10 @@ Devel::Cycle - Find memory cycles in objects
   #!/usr/bin/perl
   use Devel::Cycle;
   my $test = {fred   => [qw(a b c d e)],
-	    ethel  => [qw(1 2 3 4 5)],
-	    george => {martha => 23,
-		       agnes  => 19}
-	   };
+      ethel  => [qw(1 2 3 4 5)],
+      george => {martha => 23,
+           agnes  => 19}
+     };
   $test->{george}{phyllis} = $test;
   $test->{fred}[3]      = $test->{george};
   $test->{george}{mary} = $test->{fred};
@@ -255,23 +303,23 @@ Devel::Cycle - Find memory cycles in objects
   # output:
 
   Cycle (1):
-	                $A->{'george'} => \%B
-	               $B->{'phyllis'} => \%A
+                  $A->{'george'} => \%B
+                 $B->{'phyllis'} => \%A
 
   Cycle (2):
-	                $A->{'george'} => \%B
-	                  $B->{'mary'} => \@A
-	                       $A->[3] => \%B
+                  $A->{'george'} => \%B
+                    $B->{'mary'} => \@A
+                         $A->[3] => \%B
 
   Cycle (3):
-	                  $A->{'fred'} => \@A
-	                       $A->[3] => \%B
-	               $B->{'phyllis'} => \%A
+                    $A->{'fred'} => \@A
+                         $A->[3] => \%B
+                 $B->{'phyllis'} => \%A
 
   Cycle (4):
-	                  $A->{'fred'} => \@A
-	                       $A->[3] => \%B
-	                  $B->{'mary'} => \@A
+                    $A->{'fred'} => \@A
+                         $A->[3] => \%B
+                    $B->{'mary'} => \@A
   
   # you can also check weakened references
   weaken($test->{george}->{phyllis});
@@ -340,7 +388,7 @@ holds:
    $reference->[$index] eq $reference_value
 
 The first element of the array reference is the $object_reference that
-you pased to find_cycle() and may not be directly involved in the
+you passed to find_cycle() and may not be directly involved in the
 cycle.
 
 If a reference is a weak ref produced using Scalar::Util's weaken()
@@ -376,7 +424,7 @@ holds:
    $reference->[$index] eq $reference_value
 
 The first element of the array reference is the $object_reference that
-you pased to find_cycle() and may not be directly involved in the
+you passed to find_cycle() and may not be directly involved in the
 cycle.
 
 =back
@@ -391,7 +439,7 @@ The "raw" format prints out anonymous memory references using standard
 Perl memory location nomenclature.  For example, a "Foo::Bar" object
 that points to an ordinary hash will appear in the trace like this:
 
-	Foo::Bar=HASH(0x8124394)->{'phyllis'} => HASH(0x81b4a90)
+  Foo::Bar=HASH(0x8124394)->{'phyllis'} => HASH(0x81b4a90)
 
 The "cooked" format (the default), uses short names for anonymous
 memory locations, beginning with "A" and moving upward with the magic
@@ -402,12 +450,12 @@ memory locations, beginning with "A" and moving upward with the magic
 The "roasted" format is similar to the "cooked" format, except that
 object references are formatted slightly differently:
 
-	$Foo::Bar::B->{'phyllis'} => \%A
+  $Foo::Bar::B->{'phyllis'} => \%A
 
 If a reference is a weakened ref, then it will have a 'w->' prepended to
 it, like this:
 
-	w-> $Foo::Bar::B->{'phyllis'} => \%A
+  w-> $Foo::Bar::B->{'phyllis'} => \%A
 
 For your convenience, $Devel::Cycle::FORMATTING can be imported:
 
