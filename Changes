@@ -1,4 +1,9 @@
 Revision history for Perl extension Devel::Cycle.
+1.16 Wed Jan 15 12:08:26 EST 2025
+     - Forked to https://github.com/fra-iesus/Devel-Cycle
+     - new data types GLOB and IO added
+     - few more bugs reported at CPAN (https://rt.cpan.org/Public/Dist/Display.html?Name=Devel-Cycle) fixed
+
 1.12 Fri Nov 14 08:56:23 EST 2014
      - Moved to GitHub at https://github.com/lstein/Devel-Cycle
 
