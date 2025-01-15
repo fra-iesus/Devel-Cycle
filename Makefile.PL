@@ -10,7 +10,7 @@ WriteMakefile(
     }, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/Devel/Cycle.pm', # retrieve abstract from module
-       AUTHOR         => 'Lincoln Stein <lstein@cshl.edu>') : ()),
+       AUTHOR         => [ 'Lincoln Stein <lincoln.stein@gmail.com>', 'Alexej Sidorenko <fra.iesus@gmail.com>' ]) : ()),
     LIBS              => [''], # e.g., '-lm'
     DEFINE            => '', # e.g., '-DHAVE_SOMETHING'
     INC               => '-I.', # e.g., '-I. -I/usr/include/other'
